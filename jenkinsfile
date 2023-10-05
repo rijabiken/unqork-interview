@@ -1,0 +1,33 @@
+pipeline {
+
+    agent any
+
+    stages {
+        stage('Checkout') {
+            steps {
+                script {
+                    checkout([$class: 'GitSCM', branches: [[name: "*/main"]], extensions: [], userRemoteConfigs: [[credentialsId: '<Your-Git-Secret>', url: "http://github.com/<YOUR-GIT-REPO>.git"]]])
+                }        
+            }
+        }
+
+        stage('Execute ansible-playbook') {
+            steps{
+                sh 'ansible-playbook ansible.yml'
+            }
+        }
+    }
+
+    post {
+        always {
+            sh '''
+                echo "Sending notification to slack channel."
+                SLACK_WEBHOOK_URL="https://hooks.slack.com/services/your/webhook/url"
+                MESSAGE="Ansible pipeline is finished!"
+                CHANNEL="#general"
+                curl -X POST --data-urlencode "payload={\"channel\": \"$CHANNEL\", \"text\": \"$MESSAGE\"}" $SLACK_WEBHOOK_URL
+            '''
+        }
+    }    
+
+}
