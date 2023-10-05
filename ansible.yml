@@ -1,0 +1,122 @@
+---
+- name: Create Kubernetes Resources
+  hosts: localhost
+  tasks:
+    - name: Create Namespace
+      k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Namespace
+          metadata:
+            name: redis-applications
+            
+    - name: Deploy redis application
+      k8s:
+        state: present
+        definition:
+          apiVersion: apps/v1
+          kind: StatefulSet
+          metadata:
+            name: redis
+            namespace: redis-applications
+          spec:
+            replicas: 3
+            serviceName: redis
+            selector:
+              matchLabels:
+                app: redis
+            template:
+              metadata:
+                labels:
+                  app: redis
+              spec:
+                containers:
+                  - name: redis
+                    image: redis:latest
+                    ports:
+                      - containerPort: 6379
+                    resources:
+                      requests:
+                        memory: "512Mi"
+                        cpu: "250m"
+                    volumeMounts:
+                    - name: redis-data
+                      mountPath: /data
+            volumeClaimTemplates:
+              - metadata:
+                  name: redis-data
+                spec:
+                  accessModes: [ "ReadWriteOnce" ]
+                  resources:
+                    requests:
+                      storage: 10Gi
+                      
+    - name: Create redis service
+      k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: redis-service
+            namespace: redis-applications
+          spec:
+            selector:
+              app: redis
+            ports:
+              - protocol: TCP
+                port: 6379
+                targetPort: 6379
+            type: ClusterIP 
+
+    - name: Create HPA for redis
+      k8s:
+        state: present
+        definition:
+          apiVersion: autoscaling/v2
+          kind: HorizontalPodAutoscaler
+          metadata:
+            name: redis-hpa
+            namespace: redis-applications
+          spec:
+            scaleTargetRef:
+              apiVersion: apps/v1
+              kind: StatefulSet
+              name: redis
+            minReplicas: 3
+            maxReplicas: 5
+            metrics:
+            - type: Resource
+              resource:
+                name: cpu
+                target:
+                  type: Utilization
+                  averageUtilization: 80
+
+    - name: Create ConfigMap
+      k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: redis-configmap
+            namespace: redis-applications
+          data:
+            ratelimit: "1000"
+            retry: "5"
+
+    - name: Secret creation
+      k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Secret
+          metadata:
+            name: redis-secret
+            namespace: redis-applications
+          data:
+            username: cmVkaXMtdXNlcm5hbWUK 
+            password: cmVkaXMtcGFzc3dvcmQK
+                      
